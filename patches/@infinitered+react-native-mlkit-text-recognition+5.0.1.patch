@@ -1,0 +1,32 @@
+diff --git a/node_modules/@infinitered/react-native-mlkit-text-recognition/android/build.gradle b/node_modules/@infinitered/react-native-mlkit-text-recognition/android/build.gradle
+index e9fb5fa..ac07a4c 100644
+--- a/node_modules/@infinitered/react-native-mlkit-text-recognition/android/build.gradle
++++ b/node_modules/@infinitered/react-native-mlkit-text-recognition/android/build.gradle
+@@ -54,4 +54,4 @@ dependencies {
+   implementation project(':expo-modules-core')
+   implementation project(path: ':infinitered-react-native-mlkit-core')
+-  implementation 'com.google.mlkit:text-recognition:16.0.1'
++  implementation 'com.google.mlkit:text-recognition-korean:16.0.1'
+ }
+diff --git a/node_modules/@infinitered/react-native-mlkit-text-recognition/android/src/main/java/red/infinite/reactnativemlkit/textrecognition/RNMLKitTextRecognitionModule.kt b/node_modules/@infinitered/react-native-mlkit-text-recognition/android/src/main/java/red/infinite/reactnativemlkit/textrecognition/RNMLKitTextRecognitionModule.kt
+index 6d2960c..e3ef0e0 100644
+--- a/node_modules/@infinitered/react-native-mlkit-text-recognition/android/src/main/java/red/infinite/reactnativemlkit/textrecognition/RNMLKitTextRecognitionModule.kt
++++ b/node_modules/@infinitered/react-native-mlkit-text-recognition/android/src/main/java/red/infinite/reactnativemlkit/textrecognition/RNMLKitTextRecognitionModule.kt
+@@ -4,7 +4,7 @@ import expo.modules.kotlin.Promise
+ import expo.modules.kotlin.exception.CodedException
+ import expo.modules.kotlin.modules.Module
+ import expo.modules.kotlin.modules.ModuleDefinition
+-import com.google.mlkit.vision.text.latin.TextRecognizerOptions
++import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
+ import com.google.mlkit.vision.text.TextRecognition
+ import com.google.mlkit.vision.common.InputImage
+ import kotlinx.coroutines.runBlocking
+@@ -17,7 +17,7 @@ class RNMLKitTextRecognitionModule : Module() {
+ 
+     AsyncFunction("recognizeText") { imagePath: String, promise: Promise ->
+       runBlocking {
+-        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
++        val recognizer = TextRecognition.getClient(KoreanTextRecognizerOptions.Builder().build())
+ 
+         val image: InputImage = RNMLKitImage(Uri.parse(imagePath), appContext.reactContext!!).image
+ 

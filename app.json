@@ -1,0 +1,61 @@
+{
+  "expo": {
+    "name": "EMS Log",
+    "slug": "ems-log",
+    "version": "1.0.0",
+    "icon": "./assets/app-icon.png",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.emslog.mobile",
+      "infoPlist": {
+        "NSCameraUsageDescription": "신분증에서 생년월일을 인식하기 위해 카메라를 사용합니다. 촬영 이미지는 저장되지 않습니다."
+      }
+    },
+    "android": {
+      "package": "com.emslog.mobile",
+      "permissions": [
+        "CAMERA"
+      ],
+      "blockedPermissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/app-icon.png",
+        "backgroundColor": "#00666A"
+      }
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "신분증에서 생년월일을 인식하기 위해 카메라 접근을 허용해 주세요.",
+          "recordAudioAndroid": false
+        }
+      ],
+      "./plugins/withOptionalCamera",
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#00666A",
+          "image": "./assets/system-splash-wordmark.png",
+          "imageWidth": 220,
+          "resizeMode": "contain"
+        }
+      ],
+      "react-native-document-scanner-plugin",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "SALS 보호자 동의 후 현장 음성을 기록하기 위해 마이크 접근을 허용해 주세요.",
+          "recordAudioAndroid": true
+        }
+      ],
+      "expo-asset"
+    ]
+  }
+}
