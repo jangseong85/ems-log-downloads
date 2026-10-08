@@ -1619,12 +1619,12 @@ function BottomNavigation({
   onSelect: (tab: "memo" | "sals" | "mci" | "settings") => void;
 }) {
   const items = [
-    { key: "sals" as const, label: "SALS", icon: "timer-outline" as const },
     {
       key: "memo" as const,
       label: "메모",
       icon: "document-text-outline" as const,
     },
+    { key: "sals" as const, label: "SALS", icon: "timer-outline" as const },
     {
       key: "mci" as const,
       label: "다수사상자",

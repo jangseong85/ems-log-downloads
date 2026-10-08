@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
+  AccessibilityInfo,
+  Animated,
   AppState,
   Modal,
   Pressable,
@@ -16,6 +18,8 @@ import {
   clockText,
   deriveClock,
   elapsedText,
+  epinephrineProgress,
+  eventDuration,
   eventLabels,
   EventKind,
   parseClock,
@@ -23,7 +27,7 @@ import {
 } from "./salsClock";
 
 const STORAGE = "ems-log.sals-timers.v2";
-const rhythms = ["Asystole", "PEA", "Pulseless VT", "VF"];
+const rhythms = ["VF", "Pulseless VT", "PEA", "Asystole"];
 
 export default function SalsPage({
   isDark,
@@ -38,6 +42,8 @@ export default function SalsPage({
   const [editing, setEditing] = useState<SalsEvent | null>(null);
   const [time, setTime] = useState("");
   const [error, setError] = useState("");
+  const [reduceMotion, setReduceMotion] = useState(true);
+  const pulse = useRef(new Animated.Value(1)).current;
   const saveQueue = useRef(Promise.resolve());
   const colors = isDark
     ? {
@@ -109,6 +115,57 @@ export default function SalsPage({
     };
   }, []);
   const snapshot = deriveClock(events, now);
+  const preparing =
+    snapshot.cycleRemaining !== null &&
+    snapshot.cycleRemaining > 0 &&
+    snapshot.cycleRemaining <= 10000;
+  const cycleColor =
+    preparing || snapshot.cycleRemaining === 0
+      ? isDark
+        ? "#F0C36B"
+        : "#8C5B09"
+      : colors.accent;
+  useEffect(() => {
+    let mounted = true;
+    void AccessibilityInfo.isReduceMotionEnabled()
+      .then((value) => {
+        if (mounted) setReduceMotion(value);
+      })
+      .catch(() => undefined);
+    const subscription = AccessibilityInfo.addEventListener(
+      "reduceMotionChanged",
+      setReduceMotion,
+    );
+    return () => {
+      mounted = false;
+      subscription.remove();
+    };
+  }, []);
+  useEffect(() => {
+    if (!preparing || !visible || reduceMotion) {
+      pulse.setValue(1);
+      return;
+    }
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 0.7,
+          duration: 650,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 650,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    animation.start();
+    return () => {
+      animation.stop();
+      pulse.setValue(1);
+    };
+  }, [preparing, visible, reduceMotion, pulse]);
   const latest = (kind: EventKind) =>
     events.filter((e) => e.kind === kind).at(-1);
   const count = (kind: EventKind) =>
@@ -219,14 +276,87 @@ export default function SalsPage({
       </Pressable>
     </View>
   );
+  const eventColor = (kind: EventKind) => {
+    const palette = isDark
+      ? {
+          cpr: "#67D2BC",
+          cycle: "#A2CCC2",
+          rhythm: "#90BDF0",
+          shock: "#F0C36B",
+          epi: "#FFAF7A",
+          amio: "#C8AEF4",
+          rosc: "#8CD7A5",
+          rearrest: "#FF8A80",
+        }
+      : {
+          cpr: "#087F6D",
+          cycle: "#476A61",
+          rhythm: "#32699A",
+          shock: "#8C5B09",
+          epi: "#9C4B16",
+          amio: "#7651A2",
+          rosc: "#237544",
+          rearrest: "#B93732",
+        };
+    return palette[kind];
+  };
   const metric = (kind: EventKind, label: string) => {
     const event = latest(kind);
+    const medication = kind === "epi" || kind === "amio";
+    const doses = events.filter((e) => e.kind === kind);
+    const epi = epinephrineProgress(event ? now - event.at : 0);
+    const epiColor =
+      epi.window === "before" ? colors.accent : isDark ? "#F0C36B" : "#8C5B09";
     return (
       <View style={[styles.metric, { borderColor: colors.line }]} key={kind}>
         <View style={styles.metricHeading}>
           {text(label, styles.label)}
           {tools(kind)}
         </View>
+        {kind === "epi" && (
+          <Svg
+            width={88}
+            height={88}
+            viewBox="0 0 88 88"
+            accessibilityLabel="Epinephrine 마지막 투여 후 경과, 5분 참고 척도"
+          >
+            <Circle
+              cx={44}
+              cy={44}
+              r={36}
+              fill="none"
+              stroke={colors.line}
+              strokeWidth={6}
+            />
+            <Circle
+              cx={44}
+              cy={44}
+              r={36}
+              fill="none"
+              stroke={isDark ? "#F0C36B" : "#8C5B09"}
+              strokeOpacity={0.3}
+              strokeWidth={6}
+              strokeDasharray={`${2 * Math.PI * 36 * 0.4} ${2 * Math.PI * 36 * 0.6}`}
+              rotation={126}
+              origin="44,44"
+            />
+            <Circle
+              cx={44}
+              cy={44}
+              r={36}
+              fill="none"
+              stroke={epiColor}
+              strokeWidth={6}
+              strokeLinecap="round"
+              strokeDasharray={2 * Math.PI * 36}
+              strokeDashoffset={
+                2 * Math.PI * 36 * (1 - (event ? epi.progress : 0))
+              }
+              rotation={-90}
+              origin="44,44"
+            />
+          </Svg>
+        )}
         {text(
           event
             ? elapsedText(
@@ -243,13 +373,55 @@ export default function SalsPage({
           styles.number,
         )}
         <Text style={[styles.caption, { color: colors.muted }]}>
-          {event ? `${clockText(event.at)} · ${count(kind)}회` : "기록 없음"}
+          {event
+            ? medication
+              ? `${count(kind)}회 투여 기록`
+              : `${clockText(event.at)} · ${count(kind)}회`
+            : "기록 없음"}
         </Text>
+        {kind === "epi" && (
+          <Text style={[styles.caption, { color: colors.muted }]}>
+            3~5분 참고 구간 · 투여 기록 시 새로 시작
+          </Text>
+        )}
+        {medication &&
+          doses
+            .slice(-3)
+            .reverse()
+            .map((dose, index) => (
+              <Pressable
+                key={dose.id}
+                accessibilityRole="button"
+                accessibilityLabel={`${eventLabels[kind]} ${doses.length - index}회 시각 수정`}
+                onPress={() => edit(dose)}
+                style={[styles.dose, { borderColor: colors.line }]}
+              >
+                <Text style={[styles.time, { color: colors.text }]}>
+                  {doses.length - index}회 · {clockText(dose.at)}
+                </Text>
+                <Text style={[styles.time, { color: colors.muted }]}>
+                  경과 {elapsedText(now - dose.at)}
+                </Text>
+              </Pressable>
+            ))}
+        {medication && doses.length > 3 && (
+          <Text style={[styles.caption, { color: colors.muted }]}>
+            최근 3회 표시 · 전체는 아래 사건 기록
+          </Text>
+        )}
       </View>
     );
   };
   return (
     <View style={{ display: visible ? "flex" : "none", gap: 16 }}>
+      <Text style={[styles.label, { color: colors.muted }]}>
+        {new Intl.DateTimeFormat("ko-KR", {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+          weekday: "long",
+        }).format(now)}
+      </Text>
       <View style={styles.row}>
         {text("SALS", styles.title)}
         {button(
@@ -275,6 +447,8 @@ export default function SalsPage({
           {
             idle: "시작 전",
             cpr: "CPR 진행 중",
+            waiting: "구간 종료 · 실제 압박 재개 시 버튼을 누르세요",
+            analysis: "리듬 분석 · 압박 재개 대기",
             rosc: "ROSC",
             rearrest: "재심정지 · CPR 재개 대기",
           }[snapshot.state]
@@ -287,15 +461,15 @@ export default function SalsPage({
         ]}
       >
         <View style={styles.row}>
-          {text("CPR 누적 경과", styles.label)}
+          {text("압박 누적 · 기록 기준", styles.label)}
           {tools("cpr")}
         </View>
         {text(elapsedText(snapshot.total), styles.mainNumber)}
-        <Text style={[styles.caption, { color: colors.muted }]}>
+        <Text style={[styles.startTime, { color: colors.text }]}>
           시작 {latest("cpr") ? clockText(latest("cpr")!.at) : "—"}
         </Text>
         {button(
-          snapshot.state === "idle" ? "CPR 시작" : "CPR 재개",
+          snapshot.state === "idle" ? "압박 시작" : "압박 재개",
           () => add("cpr"),
           snapshot.state === "cpr",
           true,
@@ -304,51 +478,58 @@ export default function SalsPage({
         <View style={styles.row}>
           <View style={{ flex: 1 }}>
             <View style={styles.row}>
-              {text("2분 사이클", styles.label)}
+              {text(`${snapshot.cycleCount || 1}번째 압박 구간`, styles.label)}
               {tools("cycle")}
             </View>
-            {text(
-              snapshot.cycleRemaining === null
+            <Text style={[styles.number, { color: cycleColor }]}>
+              {snapshot.cycleRemaining === null
                 ? "—"
-                : elapsedText(snapshot.cycleRemaining),
-              styles.number,
-            )}
+                : elapsedText(snapshot.cycleRemaining)}
+            </Text>
             <Text style={[styles.caption, { color: colors.muted }]}>
               {snapshot.cycleCount}회 ·{" "}
               {snapshot.cycleRemaining === 0
-                ? "사이클 종료"
-                : "다음 사이클은 직접 시작"}
+                ? "구간 종료 · 재개 대기"
+                : preparing
+                  ? "교대 준비 · 압박 중단 신호가 아닙니다"
+                  : "실제 압박 시작 시 새 2분 구간"}
             </Text>
           </View>
-          <Svg width={64} height={64} viewBox="0 0 64 64">
-            <Circle
-              cx={32}
-              cy={32}
-              r={27}
-              fill="none"
-              stroke={colors.line}
-              strokeWidth={3}
-            />
-            <Circle
-              cx={32}
-              cy={32}
-              r={27}
-              fill="none"
-              stroke={colors.accent}
-              strokeWidth={3}
-              strokeDasharray={2 * Math.PI * 27}
-              strokeDashoffset={
-                2 * Math.PI * 27 * (1 - (snapshot.cycleRemaining ?? 0) / 120000)
-              }
-              rotation={-90}
-              origin="32,32"
-            />
-          </Svg>
+          <Animated.View style={{ opacity: pulse }}>
+            <Svg width={80} height={80} viewBox="0 0 64 64">
+              <Circle
+                cx={32}
+                cy={32}
+                r={27}
+                fill="none"
+                stroke={colors.line}
+                strokeWidth={6}
+              />
+              <Circle
+                cx={32}
+                cy={32}
+                r={27}
+                fill="none"
+                stroke={cycleColor}
+                strokeWidth={6}
+                strokeLinecap="round"
+                strokeDasharray={2 * Math.PI * 27}
+                strokeDashoffset={
+                  2 *
+                  Math.PI *
+                  27 *
+                  (1 - (snapshot.cycleRemaining ?? 0) / 120000)
+                }
+                rotation={-90}
+                origin="32,32"
+              />
+            </Svg>
+          </Animated.View>
         </View>
         {button(
-          "다음 사이클 시작",
+          "교대 후 압박 시작 · 새 2분",
           () => add("cycle"),
-          snapshot.state !== "cpr",
+          !["cpr", "waiting", "analysis", "rearrest"].includes(snapshot.state),
         )}
       </View>
       <View
@@ -364,7 +545,7 @@ export default function SalsPage({
               {button(
                 rhythm,
                 () => add("rhythm", rhythm),
-                false,
+                snapshot.state === "rosc" || snapshot.state === "rearrest",
                 latest("rhythm")?.detail === rhythm,
               )}
             </View>
@@ -392,13 +573,13 @@ export default function SalsPage({
           { backgroundColor: colors.bg, borderColor: colors.line },
         ]}
       >
-        <View style={styles.row}>
-          {metric("epi", "에피 이후 경과")}
-          {metric("amio", "아미오다론 이후 경과")}
+        <View style={[styles.row, { alignItems: "flex-start" }]}>
+          {metric("epi", "Epinephrine 이후 경과")}
+          {metric("amio", "Amiodarone 이후 경과")}
         </View>
         <View style={styles.row}>
-          {button("에피 투여 기록", () => add("epi"))}
-          {button("아미오다론 기록", () => add("amio"))}
+          {button("Epinephrine 투여 기록", () => add("epi"))}
+          {button("Amiodarone 투여 기록", () => add("amio"))}
         </View>
         <View style={[styles.divider, { backgroundColor: colors.line }]} />
         <View style={styles.row}>
@@ -406,7 +587,13 @@ export default function SalsPage({
           {metric("rearrest", "재심정지 이후 경과")}
         </View>
         <View style={styles.row}>
-          {button("ROSC 기록", () => add("rosc"), snapshot.state !== "cpr")}
+          {button(
+            "ROSC 기록",
+            () => add("rosc"),
+            !["cpr", "waiting", "analysis", "rearrest"].includes(
+              snapshot.state,
+            ),
+          )}
           {button(
             "재심정지 기록",
             () => add("rearrest"),
@@ -458,10 +645,28 @@ export default function SalsPage({
             onPress={() => edit(event)}
             style={[styles.event, { borderColor: colors.line }]}
           >
+            <View
+              style={[
+                styles.eventDot,
+                { backgroundColor: eventColor(event.kind) },
+              ]}
+            />
             {text(clockText(event.at), styles.time)}
             <View style={{ flex: 1 }}>
-              {text(eventLabels[event.kind], styles.body)}
+              <Text style={[styles.body, { color: eventColor(event.kind) }]}>
+                {eventLabels[event.kind]}
+              </Text>
               {event.detail && text(event.detail, styles.label)}
+              {event.kind === "cycle" &&
+                text(
+                  `${events.filter((e) => e.kind === "cycle").findIndex((e) => e.id === event.id) + 1}번째 구간 · ${elapsedText(eventDuration(events, event, now) ?? 0)}`,
+                  styles.label,
+                )}
+              {(event.kind === "rosc" || event.kind === "rearrest") &&
+                text(
+                  `지속 ${elapsedText(eventDuration(events, event, now) ?? 0)}`,
+                  styles.label,
+                )}
             </View>
             <Ionicons name="pencil-outline" size={16} color={colors.accent} />
           </Pressable>
@@ -527,20 +732,28 @@ export default function SalsPage({
                   const at = parseClock(time, editing.at);
                   const index = events.findIndex((e) => e.id === editing.id);
                   const firstCycle = events[index + 1];
+                  const previousCpr = events[index - 1];
                   const linkedCycle =
                     editing.kind === "cpr" &&
                     firstCycle?.kind === "cycle" &&
                     firstCycle.at === editing.at
                       ? firstCycle.id
-                      : null;
-                  const nextIndex = index + (linkedCycle ? 2 : 1);
+                      : editing.kind === "cycle" &&
+                          previousCpr?.kind === "cpr" &&
+                          previousCpr.at === editing.at
+                        ? previousCpr.id
+                        : null;
+                  const previousIndex =
+                    index - (linkedCycle === previousCpr?.id ? 2 : 1);
+                  const nextIndex =
+                    index + (linkedCycle === firstCycle?.id ? 2 : 1);
                   if (at === null) {
                     setError("00:00:00~23:59:59로 입력해 주세요.");
                     return;
                   }
                   if (
                     at > Date.now() ||
-                    (index > 0 && at < events[index - 1]!.at) ||
+                    (previousIndex >= 0 && at < events[previousIndex]!.at) ||
                     (nextIndex < events.length && at > events[nextIndex]!.at)
                   ) {
                     setError("앞뒤 기록 순서와 현재 시각을 확인해 주세요.");
@@ -566,6 +779,12 @@ export default function SalsPage({
   );
 }
 const styles = StyleSheet.create({
+  startTime: {
+    fontFamily: "Pretendard-Medium",
+    fontSize: 14,
+    lineHeight: 20,
+    fontVariant: ["tabular-nums"],
+  },
   panel: { borderWidth: 1, borderRadius: 16, padding: 16, gap: 12 },
   row: {
     flexDirection: "row",
@@ -619,7 +838,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  metric: { flex: 1, minWidth: 0, gap: 4 },
+  metric: { flex: 1, minWidth: 150, gap: 8 },
+  dose: { minHeight: 48, paddingVertical: 8, borderTopWidth: 1, gap: 4 },
   divider: { height: 1, marginVertical: 4 },
   event: {
     flexDirection: "row",
@@ -628,6 +848,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     paddingVertical: 12,
   },
+  eventDot: { width: 8, height: 8, borderRadius: 4 },
   backdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
