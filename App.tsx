@@ -342,6 +342,9 @@ export default function App() {
     "system",
   );
   const skipInitialSave = useRef(true);
+  const patientSaveQueue = useRef<Promise<void>>(Promise.resolve());
+  const patientSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resettingPatient = useRef(false);
   const [activeTab, setActiveTab] = useState<
     "memo" | "sals" | "mci" | "settings"
   >("memo");
@@ -399,16 +402,27 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!loaded || (!fontsLoaded && !fontError)) return;
+    if (!loaded || (!fontsLoaded && !fontError) || resettingPatient.current)
+      return;
     if (skipInitialSave.current) {
       skipInitialSave.current = false;
       return;
     }
     const timer = setTimeout(() => {
-      void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(form));
+      patientSaveTimer.current = null;
+      patientSaveQueue.current = patientSaveQueue.current
+        .catch(() => undefined)
+        .then(() => AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(form)));
+      void patientSaveQueue.current.catch(() =>
+        Alert.alert("저장 안내", "입력 내용의 임시 저장에 실패했습니다."),
+      );
     }, 250);
-    return () => clearTimeout(timer);
-  }, [form, loaded]);
+    patientSaveTimer.current = timer;
+    return () => {
+      clearTimeout(timer);
+      if (patientSaveTimer.current === timer) patientSaveTimer.current = null;
+    };
+  }, [form, loaded, fontsLoaded, fontError]);
 
   useEffect(() => {
     if (!loaded) return;
@@ -509,11 +523,41 @@ export default function App() {
         {
           text: "지우기",
           style: "destructive",
-          onPress: () => {
-            void deleteDocument();
-            void deleteLocalFile(form.chiefComplaintDrawing);
-            void deleteLocalFile(form.historyDrawing);
-            setForm(EMPTY);
+          onPress: async () => {
+            if (resettingPatient.current) return;
+            if (scannerBusy) {
+              Alert.alert(
+                "초기화 안내",
+                "신분증 인식이 끝난 후 초기화해 주세요.",
+              );
+              return;
+            }
+            resettingPatient.current = true;
+            if (patientSaveTimer.current)
+              clearTimeout(patientSaveTimer.current);
+            patientSaveTimer.current = null;
+            try {
+              // Queue behind older writes so they cannot restore pre-reset data.
+              patientSaveQueue.current = patientSaveQueue.current
+                .catch(() => undefined)
+                .then(() =>
+                  AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(EMPTY)),
+                );
+              await patientSaveQueue.current;
+              setForm(EMPTY);
+              await Promise.all([
+                deleteLocalFile(form.idDocument?.uri ?? null),
+                deleteLocalFile(form.chiefComplaintDrawing),
+                deleteLocalFile(form.historyDrawing),
+              ]);
+            } catch {
+              Alert.alert(
+                "초기화 실패",
+                "저장소를 비우지 못했습니다. 입력 내용은 유지됩니다. 다시 시도해 주세요.",
+              );
+            } finally {
+              resettingPatient.current = false;
+            }
           },
         },
       ],
@@ -535,6 +579,7 @@ export default function App() {
   const captureIdentity = async () => {
     if (scannerBusy) return;
     setScannerBusy(true);
+    const pendingFiles = new Set<string>();
     try {
       const photo = await cameraRef.current?.takePictureAsync({
         quality: 1,
@@ -542,6 +587,7 @@ export default function App() {
         shutterSound: false,
       });
       if (!photo?.uri) return;
+      pendingFiles.add(photo.uri);
       NativeModules.SoftShutter?.play();
       setCameraVisible(false);
       // CameraView는 세로 화면을 채우기 위해 센서 사진의 좌우를 잘라 보여 줍니다.
@@ -580,11 +626,13 @@ export default function App() {
         format: ImageManipulator.SaveFormat.JPEG,
       });
       const imageUri = preparedImage.uri;
+      pendingFiles.add(imageUri);
       const documentsDirectory = `${FileSystem.documentDirectory}identity-documents/`;
       await FileSystem.makeDirectoryAsync(documentsDirectory, {
         intermediates: true,
       });
       const savedUri = `${documentsDirectory}id-${Date.now()}.jpg`;
+      pendingFiles.add(savedUri);
       await FileSystem.copyAsync({ from: imageUri, to: savedUri });
       void FileSystem.deleteAsync(imageUri, { idempotent: true }).catch(
         () => undefined,
@@ -650,6 +698,7 @@ export default function App() {
         ...(identity.birthDate ? { birthDate: identity.birthDate } : {}),
         ...(identity.gender ? { gender: identity.gender } : {}),
       }));
+      pendingFiles.delete(savedUri);
       if (previousUri && previousUri !== savedUri)
         void FileSystem.deleteAsync(previousUri, { idempotent: true }).catch(
           () => undefined,
@@ -674,6 +723,7 @@ export default function App() {
           : "카메라 또는 문자 인식을 실행하지 못했습니다.",
       );
     } finally {
+      await Promise.all([...pendingFiles].map((uri) => deleteLocalFile(uri)));
       setScannerBusy(false);
     }
   };

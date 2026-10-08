@@ -5,7 +5,16 @@ export type SalsEvent = {
   kind: EventKind;
   at: number;
   detail?: string;
+  hidden?: boolean;
 };
+// Reset rhythm display without removing the compression-stop boundary.
+export function resetRhythms(events: SalsEvent[]): SalsEvent[] {
+  return events.map((event) =>
+    event.kind === "rhythm"
+      ? { ...event, detail: undefined, hidden: true }
+      : event,
+  );
+}
 export const eventLabels: Record<EventKind, string> = {
   cpr: "CPR 시작",
   cycle: "압박 구간 시작",

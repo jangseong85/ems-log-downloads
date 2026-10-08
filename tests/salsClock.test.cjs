@@ -1,3 +1,4 @@
+/* global __dirname */
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const ts = require("typescript");
@@ -21,6 +22,7 @@ const {
   parseClock,
   epinephrineProgress,
   eventDuration,
+  resetRhythms,
 } = moduleValue.exports;
 test("epinephrine reference ring respects 3–5 minute boundaries without repeating", () => {
   assert.equal(epinephrineProgress(179000).window, "before");
@@ -31,6 +33,21 @@ test("epinephrine reference ring respects 3–5 minute boundaries without repeat
   assert.equal(epinephrineProgress(-1000).progress, 0);
 });
 const event = (kind, at) => ({ id: `${kind}-${at}`, kind, at });
+test("rhythm reset preserves compression boundaries and survives serialization", () => {
+  const events = [
+    event("cpr", 0),
+    event("cycle", 0),
+    { ...event("rhythm", 60000), detail: "VF" },
+    event("cpr", 90000),
+    event("cycle", 90000),
+  ];
+  const reset = JSON.parse(JSON.stringify(resetRhythms(events)));
+  assert.deepEqual(deriveClock(reset, 100000), deriveClock(events, 100000));
+  assert.equal(deriveClock(reset, 100000).total, 70000);
+  assert.equal(reset.filter((e) => e.kind === "rhythm" && !e.hidden).length, 0);
+  assert.equal(reset[2].detail, undefined);
+  assert.deepEqual(resetRhythms(reset), resetRhythms(events));
+});
 test("manual CPR time change immediately changes elapsed", () => {
   assert.equal(deriveClock([event("cpr", 10000)], 70000).total, 60000);
   assert.equal(deriveClock([event("cpr", 20000)], 70000).total, 50000);

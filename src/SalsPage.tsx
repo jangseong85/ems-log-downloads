@@ -23,6 +23,7 @@ import {
   eventLabels,
   EventKind,
   parseClock,
+  resetRhythms,
   SalsEvent,
 } from "./salsClock";
 
@@ -68,7 +69,11 @@ export default function SalsPage({
     let mounted = true;
     void AsyncStorage.getItem(STORAGE)
       .then((raw) => {
-        if (!raw || !mounted) return;
+        if (!mounted) return;
+        if (!raw) {
+          setReady(true);
+          return;
+        }
         const parsed: unknown = JSON.parse(raw);
         if (
           !Array.isArray(parsed) ||
@@ -77,18 +82,20 @@ export default function SalsPage({
               typeof e.id === "string" &&
               Object.hasOwn(eventLabels, e.kind) &&
               Number.isFinite(e.at) &&
+              (e.hidden === undefined || typeof e.hidden === "boolean") &&
               (e.detail === undefined || typeof e.detail === "string"),
           )
         )
           throw new Error("Invalid events");
         setEvents((parsed as SalsEvent[]).sort((a, b) => a.at - b.at));
+        setReady(true);
       })
       .catch(() => {
         if (mounted)
-          Alert.alert("복구 안내", "SALS 기록을 불러오지 못했습니다.");
-      })
-      .finally(() => {
-        if (mounted) setReady(true);
+          Alert.alert(
+            "복구 안내",
+            "SALS 기록을 불러오지 못했습니다. 기존 기록 보호를 위해 기록 변경을 중단했습니다. 앱을 다시 실행해 주세요.",
+          );
       });
     return () => {
       mounted = false;
@@ -167,9 +174,9 @@ export default function SalsPage({
     };
   }, [preparing, visible, reduceMotion, pulse]);
   const latest = (kind: EventKind) =>
-    events.filter((e) => e.kind === kind).at(-1);
+    events.filter((e) => e.kind === kind && !e.hidden).at(-1);
   const count = (kind: EventKind) =>
-    events.filter((e) => e.kind === kind).length;
+    events.filter((e) => e.kind === kind && !e.hidden).length;
   const add = (kind: EventKind, detail?: string) => {
     const at = Date.now();
     setNow(at);
@@ -207,7 +214,9 @@ export default function SalsPage({
           style: "destructive",
           onPress: () =>
             setEvents((previous) =>
-              previous.filter((e) => !linked.includes(e.kind)),
+              kind === "rhythm"
+                ? resetRhythms(previous)
+                : previous.filter((e) => !linked.includes(e.kind)),
             ),
         },
       ],
@@ -622,55 +631,64 @@ export default function SalsPage({
                     style: "destructive",
                     onPress: () =>
                       setEvents((previous) => {
-                        const last = previous.at(-1);
-                        const before = previous.at(-2);
-                        return last?.kind === "cycle" &&
+                        const index = previous.findLastIndex(
+                          (event) => !event.hidden,
+                        );
+                        const last = previous[index];
+                        const before = previous[index - 1];
+                        const paired =
+                          last?.kind === "cycle" &&
                           before?.kind === "cpr" &&
-                          last.at === before.at
-                          ? previous.slice(0, -2)
-                          : previous.slice(0, -1);
+                          last.at === before.at;
+                        return previous.filter(
+                          (_, i) => i !== index && (!paired || i !== index - 1),
+                        );
                       }),
                   },
                 ],
               ),
-            !events.length,
+            !events.some((event) => !event.hidden),
           )}
         </View>
-        {!events.length && text("기록 없음", styles.label)}
-        {[...events].reverse().map((event) => (
-          <Pressable
-            key={event.id}
-            accessibilityRole="button"
-            accessibilityLabel={`${eventLabels[event.kind]} 시각 수정`}
-            onPress={() => edit(event)}
-            style={[styles.event, { borderColor: colors.line }]}
-          >
-            <View
-              style={[
-                styles.eventDot,
-                { backgroundColor: eventColor(event.kind) },
-              ]}
-            />
-            {text(clockText(event.at), styles.time)}
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.body, { color: eventColor(event.kind) }]}>
-                {eventLabels[event.kind]}
-              </Text>
-              {event.detail && text(event.detail, styles.label)}
-              {event.kind === "cycle" &&
-                text(
-                  `${events.filter((e) => e.kind === "cycle").findIndex((e) => e.id === event.id) + 1}번째 구간 · ${elapsedText(eventDuration(events, event, now) ?? 0)}`,
-                  styles.label,
-                )}
-              {(event.kind === "rosc" || event.kind === "rearrest") &&
-                text(
-                  `지속 ${elapsedText(eventDuration(events, event, now) ?? 0)}`,
-                  styles.label,
-                )}
-            </View>
-            <Ionicons name="pencil-outline" size={16} color={colors.accent} />
-          </Pressable>
-        ))}
+        {!events.some((event) => !event.hidden) &&
+          text("기록 없음", styles.label)}
+        {events
+          .filter((event) => !event.hidden)
+          .reverse()
+          .map((event) => (
+            <Pressable
+              key={event.id}
+              accessibilityRole="button"
+              accessibilityLabel={`${eventLabels[event.kind]} 시각 수정`}
+              onPress={() => edit(event)}
+              style={[styles.event, { borderColor: colors.line }]}
+            >
+              <View
+                style={[
+                  styles.eventDot,
+                  { backgroundColor: eventColor(event.kind) },
+                ]}
+              />
+              {text(clockText(event.at), styles.time)}
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.body, { color: eventColor(event.kind) }]}>
+                  {eventLabels[event.kind]}
+                </Text>
+                {event.detail && text(event.detail, styles.label)}
+                {event.kind === "cycle" &&
+                  text(
+                    `${events.filter((e) => e.kind === "cycle").findIndex((e) => e.id === event.id) + 1}번째 구간 · ${elapsedText(eventDuration(events, event, now) ?? 0)}`,
+                    styles.label,
+                  )}
+                {(event.kind === "rosc" || event.kind === "rearrest") &&
+                  text(
+                    `지속 ${elapsedText(eventDuration(events, event, now) ?? 0)}`,
+                    styles.label,
+                  )}
+              </View>
+              <Ionicons name="pencil-outline" size={16} color={colors.accent} />
+            </Pressable>
+          ))}
       </View>
       <Modal
         visible={!!editing}
