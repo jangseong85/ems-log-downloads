@@ -2,7 +2,7 @@
   "expo": {
     "name": "EMS Log",
     "slug": "ems-log",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "icon": "./assets/app-icon.png",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
@@ -15,7 +15,7 @@
       }
     },
     "android": {
-      "versionCode": 2,
+      "versionCode": 3,
       "package": "com.emslog.mobile",
       "permissions": [
         "CAMERA"
