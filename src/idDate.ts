@@ -3,10 +3,9 @@ export function extractBirthDate(text: string, today = new Date()): string | nul
   const normalized = text.replace(/[Oo]/g, "0").replace(/[Il|]/g, "1");
 
   // 1990. 01. 23 / 1990-01-23 / 19900123
-  const full = normalized.match(/(?:19|20)\d{2}\s*[.\-/년]?\s*(?:0?[1-9]|1[0-2])\s*[.\-/월]?\s*(?:0?[1-9]|[12]\d|3[01])/);
+  const full = normalized.match(/((?:19|20)\d{2})\s*[.\-/년]?\s*(1[0-2]|0?[1-9])\s*[.\-/월]?\s*(3[01]|[12]\d|0?[1-9])(?!\d)/);
   if (full) {
-    const digits = full[0].replace(/\D/g, "");
-    const value = digits.slice(0, 8);
+    const value = `${full[1]}${full[2]!.padStart(2, "0")}${full[3]!.padStart(2, "0")}`;
     return isValidBirthDate(value, today) ? value : null;
   }
 
