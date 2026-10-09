@@ -756,7 +756,7 @@ export default function App() {
             >
               <View style={styles.header}>
                 <Text style={[styles.title, isDark && darkStyles.primaryText]}>
-                  EMS Log
+                  119 구급대원 메모장
                 </Text>
                 <View style={styles.headerActions}>
                   <Pressable
@@ -2662,6 +2662,7 @@ const styles = StyleSheet.create(
     },
     headerActions: { flexDirection: "row", alignItems: "center", gap: 7 },
     title: {
+      flexShrink: 1,
       color: "#102A25",
       fontSize: 27,
       fontWeight: "800",

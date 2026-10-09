@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "EMS Log",
+    "name": "구급 메모장",
     "slug": "ems-log",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "icon": "./assets/app-icon.png",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
@@ -15,7 +15,7 @@
       }
     },
     "android": {
-      "versionCode": 3,
+      "versionCode": 4,
       "package": "com.emslog.mobile",
       "permissions": [
         "CAMERA"

@@ -10,13 +10,13 @@ NSRect(origin: .zero, size: size).fill()
 let paragraph = NSMutableParagraphStyle()
 paragraph.alignment = .center
 let attributes: [NSAttributedString.Key: Any] = [
-  .font: NSFont.systemFont(ofSize: 118, weight: .heavy),
+  .font: NSFont.systemFont(ofSize: 76, weight: .semibold),
   .foregroundColor: NSColor.white,
   .paragraphStyle: paragraph,
   .kern: -3,
 ]
 
-let wordmark = NSAttributedString(string: "EMS Log", attributes: attributes)
+let wordmark = NSAttributedString(string: "119 구급대원 메모장", attributes: attributes)
 let textSize = wordmark.size()
 let textRect = NSRect(
   x: 0,
